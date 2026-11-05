@@ -206,8 +206,13 @@ function computeD(){danger=new Float32Array(GW*GH);
     for(let y=Math.max(0,Math.floor(cy-R));y<=Math.min(GH-1,Math.ceil(cy+R));y++)for(let x=Math.max(0,Math.floor(cx-R));x<=Math.min(GW-1,Math.ceil(cx+R));x++)
       if(Math.hypot(x+.5-cx,y+.5-cy)<=R)danger[idx(x,y)]+=u.type==='mage'?1:.7;}
   Dfoot=field(false);Dram=field(true);}
-function nextStep(e){const F=e.ram?Dram:Dfoot;let best=null,bv=Infinity;
-  for(const [dx,dy,st] of DIRS){if(!canStep(e.cx,e.cy,dx,dy))continue;const i=idx(e.cx+dx,e.cy+dy),v=st*cost(i,e.ram)+F[i];if(v<bv){bv=v;best={x:e.cx+dx,y:e.cy+dy,i};}}
+function nextStep(e,force){const F=(e.ram||force)?Dram:Dfoot;let best=null,bv=Infinity;
+  for(const [dx,dy,st] of DIRS){if(!canStep(e.cx,e.cy,dx,dy))continue;const i=idx(e.cx+dx,e.cy+dy);
+    const c=force?(ter[i]===2?2:1)+(walls.get(i)?2:0):cost(i,e.ram);
+    const v=st*c+(F[i]<Infinity?F[i]:(force?999:Infinity));
+    if(v<bv){bv=v;best={x:e.cx+dx,y:e.cy+dy,i};}}
+  if(!best&&force&&flag){let bd=Infinity;for(const [dx,dy] of DIRS){const nx=e.cx+dx,ny=e.cy+dy;if(!inb(nx,ny)||!passT(idx(nx,ny)))continue;
+    const d=Math.hypot(nx-flag.tx,ny-flag.ty);if(d<bd){bd=d;best={x:nx,y:ny,i:idx(nx,ny)};}}}
   return best;}
 
 // ================= unit pathing (BFS, leashed to home) =================
@@ -247,7 +252,7 @@ function spawnEnemy(type,s){const b=ETYPE[type],sc=1+(turn-1)*.15,hp=Math.ceil(b
   const e={type,hp,max:hp,spd:b.spd*(.92+Math.random()*.16),dmg:b.dmg,wd:b.wd,acd:b.cd,cd:rint(b.cd),rew:b.rew,ram:!!b.ram,cx:s.x,cy:s.y,x:s.x*8+4,y:s.y*8+4,
     ox:b.ram?0:rint(5)-2,oy:b.ram?0:rint(3)-1,anim:Math.random()*4,flash:0,act:0,state:'idle',dead:false};
   enemies.push(e);choose(e);}
-function choose(e){const s=nextStep(e);if(!s){e.state='idle';return;}e.tx=s.x;e.ty=s.y;
+function choose(e,force){const s=nextStep(e,force);if(!s){e.state='idle';return;}e.tx=s.x;e.ty=s.y;
   if(walls.has(s.i)){e.state='wall';e.tgt=s.i;}else e.state='move';}
 
 // ================= combat =================
@@ -290,6 +295,15 @@ function enemyAI(e){if(e.flash>0)e.flash--;if(e.cd>0)e.cd--;if(e.act>0)e.act--;c
     if(u){e.face=u;if(dist(e,u)<=7){e.state='melee';if(e.cd<=0){e.cd=e.acd;e.act=10;dmgUnit(u,e.dmg);sfx('clang',3,1600,900,.04,.03);}}
       else{e.state='chase';stepTo(e,u.x,u.y,e.spd);}e.cx=e.x>>3;e.cy=e.y>>3;return;}
     if(e.state==='melee'||e.state==='chase')e.state='idle';}
+  const busy=e.state==='wall'||e.state==='melee'||e.state==='shoot'||e.state==='fire'||e.state==='chase';
+  if(!busy&&e.state==='idle'){
+    if(Math.hypot(e.x-(e.sx0||e.x),e.y-(e.sy0||e.y))<1){if((e.stk=(e.stk||0)+1)>=60){e.stk=0;choose(e,true);}}
+    else{e.stk=0;e.sx0=e.x;e.sy0=e.y;}
+  }else{e.stk=0;e.sx0=e.x;e.sy0=e.y;}
+  if(!busy&&(tick-(e.otk||tick)>=120)){
+    if(Math.hypot(e.x-(e.ox0||e.x),e.y-(e.oy0||e.y))<10)choose(e,true);
+    e.ox0=e.x;e.oy0=e.y;e.otk=tick;
+  }
   if(e.state==='move'){const gx=e.tx*8+4+e.ox,gy=e.ty*8+4+e.oy,sp=e.spd*(ter[idx(e.tx,e.ty)]===2?.55:1),dx=gx-e.x,dy=gy-e.y,dd=Math.hypot(dx,dy);
     e.anim+=sp*.25;if(dd<=sp){e.x=gx;e.y=gy;e.cx=e.tx;e.cy=e.ty;if(idx(e.cx,e.cy)===flagIdx){touchFlag(e);return;}choose(e);}else{e.x+=dx/dd*sp;e.y+=dy/dd*sp;}}
   else if(e.state==='wall'){if(!walls.has(e.tgt))choose(e);else{const [tx,ty]=tileOf(e.tgt);e.face={x:tx*8+4,y:ty*8+4};
