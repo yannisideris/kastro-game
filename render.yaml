@@ -1,6 +1,6 @@
 services:
-  - type: static
+  - type: web
     name: kastro-game
+    runtime: static
     buildCommand: ""
     staticPublishPath: .
-    pullRequestPreviewsEnabled: false
