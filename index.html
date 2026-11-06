@@ -164,8 +164,8 @@ const COST={archer:[12,15,25],spear:[8,10,18],mage:[25,30,45]};
 const STAT={archer:{hp:[3,4,5],r:[36,40,44],cd:[60,48,36],dmg:[1,1.5,2],spd:.45},
   spear:{hp:[8,12,16],cd:[36,32,28],dmg:[1,1.5,2.2],spd:.5},
   mage:{hp:[3,4,5],r:[44,50,56],cd:[150,130,110],dmg:[3,4,5],ch:[2,3,4],spd:.4}};
-const ETYPE={raid:{hp:4,spd:.42,dmg:1,wd:2.5,cd:40,rew:2},archer:{hp:3,spd:.38,dmg:1,wd:2,cd:70,rew:3},
-  brute:{hp:14,spd:.28,dmg:3,wd:3.5,cd:55,rew:6},shaman:{hp:6,spd:.3,dmg:0,wd:2,cd:80,rew:6},
+const ETYPE={raid:{hp:4,spd:.42,dmg:1,wd:1,cd:40,rew:2},archer:{hp:3,spd:.38,dmg:1,wd:.5,cd:90,rew:3},
+  brute:{hp:14,spd:.28,dmg:3,wd:3,cd:55,rew:6},shaman:{hp:6,spd:.3,dmg:0,wd:.5,cd:150,rew:6},
   ram:{hp:30,spd:.17,dmg:0,wd:10,cd:70,rew:10,ram:1},cata:{hp:20,spd:.15,dmg:3,wd:8,cd:200,rew:12,ram:1}};
 const DIRS=[[1,0,1],[-1,0,1],[0,1,1],[0,-1,1],[1,1,1.414],[1,-1,1.414],[-1,1,1.414],[-1,-1,1.414]];
 
@@ -257,7 +257,7 @@ function spawnEnemy(type,s){const b=ETYPE[type],sc=1+(turn-1)*.15,hp=Math.ceil(b
   enemies.push(e);choose(e);}
 function choose(e,force){const s=nextStep(e,force);if(!s){e.state='idle';return;}
   if(!e.rec)e.rec=[];e.rec.unshift(idx(e.cx,e.cy));if(e.rec.length>5)e.rec.pop();
-  e.tx=s.x;e.ty=s.y;if(walls.has(s.i)){e.state='wall';e.tgt=s.i;e.wHits=0;}else e.state='move';}
+  e.tx=s.x;e.ty=s.y;if(walls.has(s.i)){e.state='wall';e.tgt=s.i;}else e.state='move';}
 
 // ================= combat =================
 function burst(x,y,n,cols,spread=1){for(let i=0;i<n;i++)parts.push({x,y,vx:rnd(-spread,spread),vy:rnd(-2,-.5),gy:y+4+rnd(-1,2),life:40+Math.random()*40,c:cols[rint(cols.length)]});}
@@ -308,7 +308,7 @@ function enemyAI(e){if(e.flash>0)e.flash--;if(e.cd>0)e.cd--;if(e.act>0)e.act--;c
   if(e.state==='move'){const gx=e.tx*8+4+e.ox,gy=e.ty*8+4+e.oy,sp=e.spd*(ter[idx(e.tx,e.ty)]===2?.55:1),dx=gx-e.x,dy=gy-e.y,dd=Math.hypot(dx,dy);
     e.anim+=sp*.25;if(dd<=sp){e.x=gx;e.y=gy;e.cx=e.tx;e.cy=e.ty;if(idx(e.cx,e.cy)===flagIdx){touchFlag(e);return;}choose(e);}else{e.x+=dx/dd*sp;e.y+=dy/dd*sp;}}
   else if(e.state==='wall'){if(!walls.has(e.tgt))choose(e);else{const [tx,ty]=tileOf(e.tgt);e.face={x:tx*8+4,y:ty*8+4};
-    if(e.cd<=0){e.cd=e.acd;e.act=10;e.wHits=(e.wHits||0)+1;hitWall(e.tgt,e.wd+e.wHits*0.25);}}}
+    if(e.cd<=0){e.cd=e.acd;e.act=10;hitWall(e.tgt,e.wd);}}}
   else choose(e);}
 
 function unitAI(u){if(u.flash>0)u.flash--;if(u.cd>0)u.cd--;if(u.act>0)u.act--;const S=STAT[u.type],L=u.lv-1;
@@ -509,4 +509,5 @@ requestAnimationFrame(loop);
 </script>
 </body>
 </html>
+
 
