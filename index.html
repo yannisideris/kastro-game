@@ -192,12 +192,12 @@ function cost(i,ram){if(!passT(i))return Infinity;if(i===flagIdx)return 0;let c=
   if(w)c+=ram?1+w.hp*.08:10+w.hp*.6;if(!ram)c+=danger[i];return c;}
 function canStep(x,y,dx,dy){const nx=x+dx,ny=y+dy;if(!inb(nx,ny)||!passT(idx(nx,ny)))return false;
   if(dx&&dy){const a=idx(x+dx,y),b=idx(x,y+dy);if(!walkU(a)||!walkU(b))return false;}return true;}
-function field(ram){const D=new Float32Array(GW*GH).fill(Infinity),h=[];
+function field(ram){const D=new Float64Array(GW*GH).fill(Infinity),h=[];
   const push=(d,i)=>{h.push([d,i]);let k=h.length-1;while(k>0){const p=(k-1)>>1;if(h[p][0]<=h[k][0])break;[h[p],h[k]]=[h[k],h[p]];k=p;}};
   const pop=()=>{const top=h[0],last=h.pop();if(h.length){h[0]=last;let k=0;for(;;){const a=2*k+1,b=a+1;let m=k;
     if(a<h.length&&h[a][0]<h[m][0])m=a;if(b<h.length&&h[b][0]<h[m][0])m=b;if(m===k)break;[h[m],h[k]]=[h[k],h[m]];k=m;}}return top;};
   D[flagIdx]=0;push(0,flagIdx);
-  while(h.length){const [d,c]=pop();if(d>D[c])continue;const [cx,cy]=tileOf(c),ec=cost(c,ram);
+  while(h.length){const [d,c]=pop();if(d>D[c]+1e-5)continue;const [cx,cy]=tileOf(c),ec=cost(c,ram);
     for(const [dx,dy,st] of DIRS){const nx=cx+dx,ny=cy+dy;if(!inb(nx,ny))continue;const n=idx(nx,ny);
       if(!passT(n)||!canStep(nx,ny,-dx,-dy))continue;const nd=d+st*ec;if(nd<D[n]){D[n]=nd;push(nd,n);}}}
   return D;}
@@ -206,16 +206,18 @@ function computeD(){danger=new Float32Array(GW*GH);
     for(let y=Math.max(0,Math.floor(cy-R));y<=Math.min(GH-1,Math.ceil(cy+R));y++)for(let x=Math.max(0,Math.floor(cx-R));x<=Math.min(GW-1,Math.ceil(cx+R));x++)
       if(Math.hypot(x+.5-cx,y+.5-cy)<=R)danger[idx(x,y)]+=u.type==='mage'?1:.7;}
   Dfoot=field(false);Dram=field(true);}
-function nextStep(e,force){const F=(e.ram||force)?Dram:Dfoot;let best=null,bv=Infinity;
+function nextStep(e){const F=(e.ram||e.unstick)?Dram:Dfoot;let best=null,bv=Infinity,bd=Infinity;
   for(const [dx,dy,st] of DIRS){if(!canStep(e.cx,e.cy,dx,dy))continue;const nx=e.cx+dx,ny=e.cy+dy,i=idx(nx,ny);
-    const recIdx=(e.rec||[]).indexOf(i),recPen=recIdx>=0?(24-recIdx*4):0;
-    const dFlag=flag?Math.hypot(nx-flag.tx,ny-flag.ty)*0.03:0;
-    const c=force?(ter[i]===2?1.2:1)+(walls.get(i)?1.5:0):cost(i,e.ram);
-    const v=st*c+(F[i]<Infinity?F[i]:(force?999:Infinity))+recPen+dFlag;
-    if(v<bv){bv=v;best={x:nx,y:ny,i};}}
-  if(!best&&flag){let bd=Infinity;for(const [dx,dy] of DIRS){const nx=e.cx+dx,ny=e.cy+dy;if(!inb(nx,ny)||!passT(idx(nx,ny)))continue;
-    const recIdx=(e.rec||[]).indexOf(idx(nx,ny));
-    const d=Math.hypot(nx-flag.tx,ny-flag.ty)+(recIdx>=0?15:0);if(d<bd){bd=d;best={x:nx,y:ny,i:idx(nx,ny)};}}}
+    if(F[i]===Infinity)continue;
+    const recIdx=(e.rec||[]).indexOf(i),recPen=recIdx>=0?(4-recIdx)*0.4:0;
+    const c=cost(i,e.ram||e.unstick),v=st*c+F[i]+recPen,d=flag?Math.hypot(nx-flag.tx,ny-flag.ty):0;
+    if(v<bv-1e-4||(Math.abs(v-bv)<=1e-4&&d<bd)){bv=v;bd=d;best={x:nx,y:ny,i};}}
+  if(!best&&!e.ram){
+    for(const [dx,dy,st] of DIRS){if(!canStep(e.cx,e.cy,dx,dy))continue;const nx=e.cx+dx,ny=e.cy+dy,i=idx(nx,ny);
+      if(Dram[i]===Infinity)continue;
+      const recIdx=(e.rec||[]).indexOf(i),recPen=recIdx>=0?(4-recIdx)*0.4:0;
+      const c=cost(i,true),v=st*c+Dram[i]+recPen,d=flag?Math.hypot(nx-flag.tx,ny-flag.ty):0;
+      if(v<bv-1e-4||(Math.abs(v-bv)<=1e-4&&d<bd)){bv=v;bd=d;best={x:nx,y:ny,i};}}}
   return best;}
 
 // ================= unit pathing (BFS, leashed to home) =================
@@ -253,10 +255,12 @@ function gameOver(){phase='over';overT=0;shake=30;beep(200,30,1.2,.1,'sawtooth')
 
 function spawnEnemy(type,s){const b=ETYPE[type],sc=1+(turn-1)*.15,hp=Math.ceil(b.hp*sc);
   const e={type,hp,max:hp,spd:b.spd*(.92+Math.random()*.16),dmg:b.dmg,wd:b.wd,acd:b.cd,cd:rint(b.cd),rew:b.rew,ram:!!b.ram,cx:s.x,cy:s.y,x:s.x*8+4,y:s.y*8+4,
-    ox:b.ram?0:rint(5)-2,oy:b.ram?0:rint(3)-1,anim:Math.random()*4,flash:0,act:0,state:'idle',dead:false};
+    ox:b.ram?0:rint(5)-2,oy:b.ram?0:rint(3)-1,anim:Math.random()*4,flash:0,act:0,state:'idle',dead:false,rec:[]};
   enemies.push(e);choose(e);}
-function choose(e,force){const s=nextStep(e,force);if(!s){e.state='idle';return;}
-  if(!e.rec)e.rec=[];e.rec.unshift(idx(e.cx,e.cy));if(e.rec.length>5)e.rec.pop();
+function choose(e){let s=nextStep(e);
+  if(!s&&!e.unstick){e.unstick=true;s=nextStep(e);}
+  if(!s){e.state='idle';return;}
+  if(!e.rec)e.rec=[];e.rec.unshift(idx(e.cx,e.cy));if(e.rec.length>4)e.rec.pop();
   e.tx=s.x;e.ty=s.y;if(walls.has(s.i)){e.state='wall';e.tgt=s.i;}else e.state='move';}
 
 // ================= combat =================
@@ -300,13 +304,12 @@ function enemyAI(e){if(e.flash>0)e.flash--;if(e.cd>0)e.cd--;if(e.act>0)e.act--;c
       else{e.state='chase';stepTo(e,u.x,u.y,e.spd);}e.cx=e.x>>3;e.cy=e.y>>3;return;}
     if(e.state==='melee'||e.state==='chase')e.state='idle';}
   const busy=e.state==='wall'||e.state==='melee'||e.state==='shoot'||e.state==='fire'||e.state==='chase';
-  if(!busy&&flag){
-    const dFlag=Math.hypot(e.x-flag.tx*8,e.y-flag.ty*8);
-    if(e.minD===undefined||dFlag<e.minD-3){e.minD=dFlag;e.progT=tick;}
-    else if(tick-(e.progT||tick)>=70){e.progT=tick;choose(e,true);}
-  }else{e.progT=tick;if(flag)e.minD=Math.hypot(e.x-flag.tx*8,e.y-flag.ty*8);}
+  if(!busy){
+    if(e.lx===undefined||Math.hypot(e.x-e.lx,e.y-e.ly)>2){e.lx=e.x;e.ly=e.y;e.stkT=tick;}
+    else if(tick-(e.stkT||tick)>=75){e.stkT=tick;e.unstick=true;choose(e);}
+  }else{e.stkT=tick;e.lx=e.x;e.ly=e.y;e.unstick=false;}
   if(e.state==='move'){const gx=e.tx*8+4+e.ox,gy=e.ty*8+4+e.oy,sp=e.spd*(ter[idx(e.tx,e.ty)]===2?.55:1),dx=gx-e.x,dy=gy-e.y,dd=Math.hypot(dx,dy);
-    e.anim+=sp*.25;if(dd<=sp){e.x=gx;e.y=gy;e.cx=e.tx;e.cy=e.ty;if(idx(e.cx,e.cy)===flagIdx){touchFlag(e);return;}choose(e);}else{e.x+=dx/dd*sp;e.y+=dy/dd*sp;}}
+    e.anim+=sp*.25;if(dd<=sp){e.x=gx;e.y=gy;e.cx=e.tx;e.cy=e.ty;e.unstick=false;if(idx(e.cx,e.cy)===flagIdx){touchFlag(e);return;}choose(e);}else{e.x+=dx/dd*sp;e.y+=dy/dd*sp;}}
   else if(e.state==='wall'){if(!walls.has(e.tgt))choose(e);else{const [tx,ty]=tileOf(e.tgt);e.face={x:tx*8+4,y:ty*8+4};
     if(e.cd<=0){e.cd=e.acd;e.act=10;hitWall(e.tgt,e.wd);}}}
   else choose(e);}
