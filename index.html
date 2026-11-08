@@ -159,7 +159,10 @@ function renderBg(){const bx=bg.getContext('2d'),id=bx.createImageData(W,FIELD),
 // ================= rules =================
 const PIECES=[[[0,0]],[[0,0],[1,0]],[[0,0],[1,0]],[[0,0],[1,0],[2,0]],[[0,0],[1,0],[2,0]],[[0,0],[1,0],[1,1]],[[0,0],[1,0],[1,1]],
   [[0,0],[1,0],[2,0],[3,0]],[[0,0],[1,0],[2,0],[2,1]],[[0,0],[1,0],[2,0],[1,1]],[[0,0],[1,0],[1,1],[2,1]],[[0,0],[1,0],[0,1],[1,1]]];
-const LONE_CATA=1500; // v3: ticks (60/s) a lone catapult keeps bombarding before marching
+const LONE_CATA=6;        // v4: shots a lone catapult fires before it marches on the flag (v3 was ~8, by time)
+const LONE_WALL_HITS=6;   // v4: a lone enemy breaks a full wall in about this many hits...
+const LONE_WALL_CD=40;    // v4: ...with at most this many ticks between hits (~4s per wall)
+const SPEAR_REACH=12;     // v4: reach only while the spearman is pinned and can't step closer (normal reach is still 8)
 const WALLC=2,WALLHP=20,TOOLS=['wall','archer','spear','mage'];
 const COST={archer:[12,15,25],spear:[8,10,18],mage:[25,30,45]};
 const STAT={archer:{hp:[3,4,5],r:[36,40,44],cd:[60,48,36],dmg:[1,1.5,2],spd:.45},
@@ -299,10 +302,11 @@ function enemyAI(e){if(e.flash>0)e.flash--;if(e.cd>0)e.cd--;if(e.act>0)e.act--;c
     if(e.state==='shoot')e.state='idle';}
   if(T==='shaman'&&e.cd<=0){const hurt=enemies.filter(o=>o!==e&&!o.dead&&o.hp<o.max&&dist(o,e)<26);
     if(hurt.length){e.cd=e.acd;e.act=24;for(const o of hurt){o.hp=Math.min(o.max,o.hp+3);sparkle(o.x,o.y,'c');}sparkle(e.x,e.y-6,'C');beep(300,900,.3,.03,'triangle');}}
-  if(T==='cata'){// v3: a catapult left alone on the field bombards for a while (~25s of actual firing, LONE_CATA ticks), then marches on the flag
-    const lone=queues.every(Q=>!Q.q.length)&&enemies.every(o=>o===e||o.dead);if(!lone)e.lone=0;
-    const t=lone&&e.lone>LONE_CATA?null:cataTarget(e);if(t){e.state='fire';e.face=t;if(lone)e.lone=(e.lone||0)+1;
-    if(e.cd<=0){e.cd=e.acd;e.act=20;boulders.push({sx:e.x,sy:e.y-6,tx:t.x,ty:t.y,t:0,dur:50,i:t.i,wd:e.wd,dmg:e.dmg});beep(90,200,.2,.06,'square');}return;}
+  const lone=queues.every(Q=>!Q.q.length)&&enemies.every(o=>o===e||o.dead); // v4: last enemy on the field
+  if(T==='cata'){// v3/v4: a catapult left alone on the field fires LONE_CATA more shots, then marches on the flag
+    if(!lone)e.lone=0;
+    const t=lone&&e.lone>=LONE_CATA?null:cataTarget(e);if(t){e.state='fire';e.face=t;
+    if(e.cd<=0){if(lone)e.lone=(e.lone||0)+1;e.cd=e.acd;e.act=20;boulders.push({sx:e.x,sy:e.y-6,tx:t.x,ty:t.y,t:0,dur:50,i:t.i,wd:e.wd,dmg:e.dmg});beep(90,200,.2,.06,'square');}return;}
     if(e.state==='fire')e.state='idle';}
   if(T==='raid'||T==='brute'){const u=nearestUnit(e,16,true);
     if(u){e.face=u;if(dist(e,u)<=7){e.state='melee';if(e.cd<=0){e.cd=e.acd;e.act=10;dmgUnit(u,e.dmg);sfx('clang',3,1600,900,.04,.03);}}
@@ -316,17 +320,23 @@ function enemyAI(e){if(e.flash>0)e.flash--;if(e.cd>0)e.cd--;if(e.act>0)e.act--;c
   if(e.state==='move'){const gx=e.tx*8+4+e.ox,gy=e.ty*8+4+e.oy,sp=e.spd*(ter[idx(e.tx,e.ty)]===2?.55:1),dx=gx-e.x,dy=gy-e.y,dd=Math.hypot(dx,dy);
     e.anim+=sp*.25;if(dd<=sp){e.x=gx;e.y=gy;e.cx=e.tx;e.cy=e.ty;e.unstick=false;if(idx(e.cx,e.cy)===flagIdx){touchFlag(e);return;}choose(e);}else{e.x+=dx/dd*sp;e.y+=dy/dd*sp;}}
   else if(e.state==='wall'){if(!walls.has(e.tgt))choose(e);else{const [tx,ty]=tileOf(e.tgt);e.face={x:tx*8+4,y:ty*8+4};
-    if(e.cd<=0){e.cd=e.acd;e.act=10;hitWall(e.tgt,e.wd);}}}
+    if(e.cd<=0){e.act=10;
+      if(lone){const w=walls.get(e.tgt);e.cd=Math.min(e.acd,LONE_WALL_CD);hitWall(e.tgt,Math.max(e.wd,w.max/LONE_WALL_HITS));} // v4: last enemy batters walls faster
+      else{e.cd=e.acd;hitWall(e.tgt,e.wd);}}}}
   else choose(e);}
 
 function unitAI(u){if(u.flash>0)u.flash--;if(u.cd>0)u.cd--;if(u.act>0)u.act--;const S=STAT[u.type],L=u.lv-1;
   if(u.aim>0){if(--u.aim===0&&u.tgt&&!u.tgt.dead)release(u);return;}
   const homeX=u.hx*8+4,homeY=u.hy*8+4;
   if(u.type==='spear'){let best=null,bs=1e9;
+    // v4: normal reach stays 8; only when the spearman is pinned (tries to close in but can't take a step, e.g. at its leash)
+    // can it hit from SPEAR_REACH, so balance is untouched everywhere else
+    const reach=e=>(u.pin||0)>=10?SPEAR_REACH:8;
     for(const e of enemies){if(e.dead||Math.hypot(e.x-homeX,e.y-homeY)>LEASH+10)continue;const s=dist(u,e)+(Dfoot[idx(e.cx,e.cy)]||0)*2;if(s<bs){bs=s;best=e;}}
-    if(best){u.face=best;if(dist(u,best)<=8&&clearLine(u.x,u.y,best.x,best.y)){if(u.cd<=0){u.cd=S.cd[L];u.act=8;hurtEnemy(best,S.dmg[L]);
-        spark((u.x+best.x)/2,(u.y+best.y)/2-3);sfx('stab',3,1200,600,.03,.03);}}else moveTo(u,best.x,best.y);}
-    else moveTo(u,homeX,homeY);return;}
+    if(best){u.face=best;if(dist(u,best)<=reach(best)&&clearLine(u.x,u.y,best.x,best.y)){if(u.cd<=0){u.cd=S.cd[L];u.act=8;hurtEnemy(best,S.dmg[L]);
+        spark((u.x+best.x)/2,(u.y+best.y)/2-3);sfx('stab',3,1200,600,.03,.03);}}
+      else{const px=u.x,py=u.y;moveTo(u,best.x,best.y);u.pin=Math.hypot(u.x-px,u.y-py)<.01?(u.pin||0)+1:0;}}
+    else{u.pin=0;moveTo(u,homeX,homeY);}return;}
   const R=S.r[L]+(u.onWall?12:0),oy=u.y-4;let best=null,bv=1e9;
   for(const e of enemies){if(e.dead)continue;if(Math.hypot(e.x-u.x,e.y-oy)<=R){const v=Dfoot[idx(e.cx,e.cy)]-(u.type==='mage'&&e.ram?30:0);if(v<bv){bv=v;best=e;}}}
   if(!u.onWall){const th=enemies.find(e=>!e.dead&&(e.type==='raid'||e.type==='brute')&&dist(e,u)<12);
