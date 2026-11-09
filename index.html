@@ -159,7 +159,7 @@ function renderBg(){const bx=bg.getContext('2d'),id=bx.createImageData(W,FIELD),
 // ================= rules =================
 const PIECES=[[[0,0]],[[0,0],[1,0]],[[0,0],[1,0]],[[0,0],[1,0],[2,0]],[[0,0],[1,0],[2,0]],[[0,0],[1,0],[1,1]],[[0,0],[1,0],[1,1]],
   [[0,0],[1,0],[2,0],[3,0]],[[0,0],[1,0],[2,0],[2,1]],[[0,0],[1,0],[2,0],[1,1]],[[0,0],[1,0],[1,1],[2,1]],[[0,0],[1,0],[0,1],[1,1]]];
-const LONE_CATA=6;        // v4: shots a lone catapult fires before it marches on the flag (v3 was ~8, by time)
+const LONE_CATA=2;        // v6: shots a lone catapult fires before it marches on the flag (v4 was 6, v3 ~8 by time)
 const LONE_WALL_HITS=6;   // v4: a lone enemy breaks a full wall in about this many hits...
 const LONE_WALL_CD=40;    // v4: ...with at most this many ticks between hits (~4s per wall)
 const SPEAR_REACH=12;     // v4: reach only while the spearman is pinned and can't step closer (normal reach is still 8)
